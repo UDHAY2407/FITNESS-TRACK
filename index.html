@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>THE HABITS & TRAINING LOG</title>
+<title>The Ledger — Training Log</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -14,7 +14,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
   const firebaseConfig = {
-    apiKey: "AIzaSyCpbfpjUGWfQKzGGWDu64BhgI2FvsGJi2M",
+apiKey: "AIzaSyCpbfpjUGWfQKzGGWDu64BhgI2FvsGJi2M",
   authDomain: "habits-tracker-83d4d.firebaseapp.com",
   projectId: "habits-tracker-83d4d",
   storageBucket: "habits-tracker-83d4d.firebasestorage.app",
@@ -159,11 +159,15 @@
   .add-form{ background:var(--surface); border:1px solid var(--divider); border-radius:3px; padding:16px; margin-bottom:20px; }
 
   /* Exercise log entries */
-  .exercise-line{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-  .exercise-line input{ background:var(--surface-raised); border:1px solid var(--divider); color:var(--bone); padding:9px; border-radius:2px; font-size:14px; }
-  .exercise-line input.ex-name{ flex:2; }
-  .exercise-line input.ex-num{ flex:1; width:0; }
-  .exercise-line .rm{ background:none; border:none; color:var(--danger); font-size:16px; cursor:pointer; }
+  .exercise-line{ background:var(--surface-raised); border:1px solid var(--divider); border-radius:3px; padding:10px; margin-bottom:10px; }
+  .exercise-line-top{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .exercise-line-top .ex-name{ flex:1; min-width:0; }
+  .exercise-line .rm{ background:none; border:none; color:var(--danger); font-size:18px; cursor:pointer; flex-shrink:0; padding:2px 4px; }
+  .exercise-num-labels{ display:flex; gap:8px; margin-bottom:4px; }
+  .exercise-num-labels span{ flex:1; text-align:center; font-size:9px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); }
+  .exercise-line-nums{ display:flex; gap:8px; }
+  .exercise-line input{ background:var(--surface); border:1px solid var(--divider); color:var(--bone); padding:9px; border-radius:2px; font-size:14px; width:100%; box-sizing:border-box; }
+  .exercise-line .ex-num{ flex:1; min-width:0; text-align:center; }
   .add-exercise{ background:none; border:1px dashed var(--divider); color:var(--muted); padding:8px; width:100%; border-radius:2px; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; margin-bottom:12px; }
 
   /* Workout history cards */
@@ -715,11 +719,16 @@ function renderExerciseRows(){
   if(!wrap) return;
   wrap.innerHTML = draftExercises.map((ex,i)=>`
     <div class="exercise-line">
-      <input class="ex-name" placeholder="Exercise" value="${escapeAttr(ex.name)}" oninput="draftExercises[${i}].name=this.value">
-      <input class="ex-num" placeholder="Sets" inputmode="numeric" value="${escapeAttr(ex.sets)}" oninput="draftExercises[${i}].sets=this.value">
-      <input class="ex-num" placeholder="Reps" inputmode="numeric" value="${escapeAttr(ex.reps)}" oninput="draftExercises[${i}].reps=this.value">
-      <input class="ex-num" placeholder="Kg" inputmode="decimal" value="${escapeAttr(ex.weight)}" oninput="draftExercises[${i}].weight=this.value">
-      <button class="rm" onclick="removeExerciseRow(${i})">✕</button>
+      <div class="exercise-line-top">
+        <input class="ex-name" placeholder="Exercise name" value="${escapeAttr(ex.name)}" oninput="draftExercises[${i}].name=this.value">
+        <button class="rm" onclick="removeExerciseRow(${i})">✕</button>
+      </div>
+      <div class="exercise-num-labels"><span>Sets</span><span>Reps</span><span>Kg</span></div>
+      <div class="exercise-line-nums">
+        <input class="ex-num" placeholder="0" inputmode="numeric" value="${escapeAttr(ex.sets)}" oninput="draftExercises[${i}].sets=this.value">
+        <input class="ex-num" placeholder="0" inputmode="numeric" value="${escapeAttr(ex.reps)}" oninput="draftExercises[${i}].reps=this.value">
+        <input class="ex-num" placeholder="0" inputmode="decimal" value="${escapeAttr(ex.weight)}" oninput="draftExercises[${i}].weight=this.value">
+      </div>
     </div>
   `).join('');
 }
