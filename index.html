@@ -266,15 +266,22 @@ let data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, 
 let currentTab = 'today';
 let draftExercises = [{name:'', sets:'', reps:'', weight:''}];
 let reportFrom = null, reportTo = null, reportGenerated = null;
+let selectedEntryDate = null;
 let currentUser = null;
 let authMode = 'signin';
 let authError = '';
 let authBusy = false;
 let authEmailDraft = '';
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function localDateStr(d){
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${yr}-${mo}-${day}`;
+}
+function todayStr(){ return localDateStr(new Date()); }
 function fmtDate(d){ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'}); }
-function last14Dates(){ const arr=[]; for(let i=13;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(d.toISOString().slice(0,10)); } return arr; }
+function last14Dates(){ const arr=[]; for(let i=13;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(localDateStr(d)); } return arr; }
 
 async function loadData(){
   if(!currentUser) return;
@@ -434,7 +441,7 @@ function calcStreak(habitId){
   const t = todayStr();
   if(!(data.checkins[t]||[]).includes(habitId)) d.setDate(d.getDate()-1);
   while(true){
-    const ds = d.toISOString().slice(0,10);
+    const ds = localDateStr(d);
     if((data.checkins[ds]||[]).includes(habitId)){ streak++; d.setDate(d.getDate()-1); }
     else break;
   }
@@ -448,7 +455,7 @@ function calcOverallStreak(){
   const todayDone = (data.checkins[t]||[]).length;
   if(todayDone < data.habits.length) d.setDate(d.getDate()-1);
   while(true){
-    const ds = d.toISOString().slice(0,10);
+    const ds = localDateStr(d);
     const doneCount = (data.checkins[ds]||[]).length;
     if(doneCount >= data.habits.length && data.habits.length>0){ streak++; d.setDate(d.getDate()-1); }
     else break;
@@ -461,7 +468,7 @@ function habitCompletionSeries(numDays){
   const arr = [];
   for(let i=numDays-1;i>=0;i--){
     const d = new Date(); d.setDate(d.getDate()-i);
-    const ds = d.toISOString().slice(0,10);
+    const ds = localDateStr(d);
     const done = (data.checkins[ds]||[]).length;
     const pct = total>0 ? Math.round((Math.min(done,total)/total)*100) : 0;
     arr.push({ date: ds, pct });
@@ -470,12 +477,17 @@ function habitCompletionSeries(numDays){
 }
 
 function toggleHabit(habitId){
-  const t = todayStr();
+  const t = selectedEntryDate || todayStr();
   if(!data.checkins[t]) data.checkins[t] = [];
   const idx = data.checkins[t].indexOf(habitId);
   if(idx>-1) data.checkins[t].splice(idx,1);
   else data.checkins[t].push(habitId);
   saveData(); render();
+}
+
+function setEntryDate(dateStr){
+  selectedEntryDate = dateStr || todayStr();
+  render();
 }
 
 function addHabit(name){
@@ -489,10 +501,11 @@ function deleteHabit(id){
   saveData(); render();
 }
 
-function addWorkout(title, exercises){
+function addWorkout(title, exercises, date){
   const clean = exercises.filter(e=>e.name.trim());
   if(!title.trim() || clean.length===0) return;
-  data.workouts.unshift({ id:'w'+Date.now(), date: todayStr(), title: title.trim(), exercises: clean });
+  data.workouts.unshift({ id:'w'+Date.now(), date: date || todayStr(), title: title.trim(), exercises: clean });
+  data.workouts.sort((a,b)=> b.date.localeCompare(a.date) || 0);
   saveData(); render();
 }
 function deleteWorkout(id){
@@ -500,11 +513,12 @@ function deleteWorkout(id){
   saveData(); render();
 }
 
-function addWeight(val){
+function addWeight(val, date){
   const n = parseFloat(val);
   if(isNaN(n)) return;
-  data.weights = data.weights.filter(w=>w.date!==todayStr());
-  data.weights.push({ date: todayStr(), value: n });
+  const d = date || todayStr();
+  data.weights = data.weights.filter(w=>w.date!==d);
+  data.weights.push({ date: d, value: n });
   data.weights.sort((a,b)=>a.date.localeCompare(b.date));
   saveData(); render();
 }
@@ -524,7 +538,7 @@ function deleteCalorieEntry(date){
   saveData(); render();
 }
 function calorieDates(numDays){
-  const arr=[]; for(let i=numDays-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(d.toISOString().slice(0,10)); } return arr;
+  const arr=[]; for(let i=numDays-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(localDateStr(d)); } return arr;
 }
 
 const KCAL_PER_KG = 7700; // approximate energy density of body-fat tissue
@@ -548,7 +562,9 @@ function renderTabs(){
 }
 
 function renderToday(){
-  const t = todayStr();
+  if(!selectedEntryDate) selectedEntryDate = todayStr();
+  const t = selectedEntryDate;
+  const isToday = t === todayStr();
   const doneIds = data.checkins[t] || [];
   const total = data.habits.length;
   const done = data.habits.filter(h=>doneIds.includes(h.id)).length;
@@ -556,8 +572,14 @@ function renderToday(){
   const overallStreak = calcOverallStreak();
 
   let html = `
+    <div class="add-form" style="margin-bottom:18px;">
+      <div class="field" style="margin-bottom:0;">
+        <label>Marking Habits For</label>
+        <input type="date" id="entryDateInput" value="${t}" max="${todayStr()}" onchange="setEntryDate(this.value)">
+      </div>
+    </div>
     <div class="scoreboard four">
-      <div class="score-card"><div class="score-num">${done}/${total||0}</div><div class="score-label">Marked Today</div></div>
+      <div class="score-card"><div class="score-num">${done}/${total||0}</div><div class="score-label">${isToday ? 'Marked Today' : 'Marked'}</div></div>
       <div class="score-card"><div class="score-num moss">${overallStreak}</div><div class="score-label">Overall Streak</div></div>
       <div class="score-card"><div class="score-num">${bestStreak}</div><div class="score-label">Best Habit</div></div>
       <div class="score-card"><div class="score-num">${data.workouts.length}</div><div class="score-label">Sessions</div></div>
@@ -567,7 +589,7 @@ function renderToday(){
   if(data.habits.length===0){
     html += `<div class="empty"><div class="mark">No Habits Yet</div><p>Head to the Habits tab and add the first line to your ledger.</p></div>`;
   } else {
-    html += `<div class="section-title">Punch In</div>`;
+    html += `<div class="section-title">${isToday ? 'Punch In' : 'Punch In — ' + fmtDate(t)}</div>`;
     data.habits.forEach(h=>{
       const isDone = doneIds.includes(h.id);
       const streak = calcStreak(h.id);
@@ -646,9 +668,15 @@ function renderHabits(){
 function renderWorkouts(){
   let html = `
     <div class="add-form">
-      <div class="field">
-        <label>Session Name</label>
-        <input type="text" id="workoutTitle" placeholder="e.g. Push Day, Leg Day, 5K Run">
+      <div class="row-2">
+        <div class="field" style="flex:2;">
+          <label>Session Name</label>
+          <input type="text" id="workoutTitle" placeholder="e.g. Push Day, Leg Day, 5K Run">
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="workoutDate" value="${todayStr()}" max="${todayStr()}">
+        </div>
       </div>
       <div id="exerciseList"></div>
       <button class="add-exercise" onclick="handleAddExerciseRow()">+ Add Exercise</button>
@@ -700,7 +728,8 @@ function removeExerciseRow(i){ if(draftExercises.length>1){ draftExercises.splic
 
 function handleAddWorkout(){
   const title = document.getElementById('workoutTitle').value;
-  addWorkout(title, draftExercises);
+  const date = document.getElementById('workoutDate').value;
+  addWorkout(title, draftExercises, date);
   draftExercises = [{name:'',sets:'',reps:'',weight:''}];
 }
 
@@ -806,7 +835,7 @@ function renderCalories(){
     <div class="add-form">
       <div class="field">
         <label>Date</label>
-        <input type="date" id="calDate" value="${todayStr()}">
+        <input type="date" id="calDate" value="${todayStr()}" max="${todayStr()}">
       </div>
       <div class="row-2">
         <div class="field">
@@ -853,7 +882,7 @@ function renderCalories(){
 
 function defaultReportDates(){
   if(!reportTo) reportTo = todayStr();
-  if(!reportFrom){ const d = new Date(); d.setDate(d.getDate()-30); reportFrom = d.toISOString().slice(0,10); }
+  if(!reportFrom){ const d = new Date(); d.setDate(d.getDate()-30); reportFrom = localDateStr(d); }
 }
 
 function generateReport(){
@@ -871,7 +900,7 @@ function compileReport(from, to){
   let cursor = new Date(from+'T00:00:00');
   const end = new Date(to+'T00:00:00');
   while(cursor <= end){
-    const ds = cursor.toISOString().slice(0,10);
+    const ds = localDateStr(cursor);
     const doneIds = data.checkins[ds] || [];
     habitDays.push({ date: ds, done: doneIds.length, total: data.habits.length });
     cursor.setDate(cursor.getDate()+1);
@@ -1048,8 +1077,12 @@ function renderProgress(){
     <div class="add-form">
       <div class="row-2">
         <div class="field">
-          <label>Today's Weight (kg)</label>
+          <label>Weight (kg)</label>
           <input type="number" step="0.1" id="weightInput" placeholder="e.g. 72.5">
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="weightDate" value="${todayStr()}" max="${todayStr()}">
         </div>
       </div>
       <button class="btn" onclick="handleAddWeight()">Log Weight</button>
@@ -1118,7 +1151,8 @@ function renderProgress(){
 
 function handleAddWeight(){
   const input = document.getElementById('weightInput');
-  addWeight(input.value);
+  const dateInput = document.getElementById('weightDate');
+  addWeight(input.value, dateInput ? dateInput.value : null);
 }
 
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
