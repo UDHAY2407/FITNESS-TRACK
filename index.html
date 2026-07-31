@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>The Ledger — Training Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --ink: #14150F;
+    --surface: #1F2118;
+    --surface-raised: #262819;
+    --bone: #EDE8DA;
+    --muted: #8C8A78;
+    --ember: #C4622D;
+    --ember-dim: #7A3E1E;
+    --moss: #8FA876;
+    --moss-dim: #45532F;
+    --divider: #35362A;
+    --danger: #A85A4A;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; }
+  body{
+    background:var(--ink);
+    color:var(--bone);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(196,98,45,0.06), transparent 40%),
+      radial-gradient(circle at 85% 92%, rgba(143,168,118,0.05), transparent 45%);
+  }
+  .app{ width:100%; max-width:480px; min-height:100vh; display:flex; flex-direction:column; position:relative; }
+
+  /* Header */
+  .header{ padding:28px 20px 18px; border-bottom:1px solid var(--divider); }
+  .eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.18em; color:var(--muted); text-transform:uppercase; }
+  .date-stamp{
+    font-family:'Oswald', sans-serif; font-weight:700; font-size:34px; letter-spacing:0.01em;
+    text-transform:uppercase; margin-top:4px; color:var(--bone);
+    display:flex; align-items:baseline; gap:10px;
+  }
+  .date-stamp .day{ color:var(--ember); }
+  .backup-bar{ display:flex; gap:14px; margin-top:12px; }
+  .backup-link{
+    background:none; border:1px solid var(--divider); color:var(--muted); font-family:'IBM Plex Mono', monospace;
+    font-size:10px; letter-spacing:0.06em; text-transform:uppercase; padding:6px 10px; border-radius:2px; cursor:pointer;
+  }
+  .backup-link:active{ color:var(--ember); border-color:var(--ember); }
+
+  /* Tabs */
+  .tabs{
+    display:flex; border-bottom:1px solid var(--divider);
+    position:sticky; top:0; background:var(--ink); z-index:10;
+  }
+  .tab{
+    flex:1; padding:14px 3px; text-align:center; font-family:'IBM Plex Mono', monospace;
+    font-size:9.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted);
+    background:none; border:none; cursor:pointer; position:relative;
+  }
+  .tab.active{ color:var(--bone); }
+  .tab.active::after{
+    content:''; position:absolute; bottom:-1px; left:20%; right:20%; height:2px; background:var(--ember);
+  }
+
+  .view{ display:none; padding:22px 20px 90px; flex:1; }
+  .view.active{ display:block; animation:fade .25s ease; }
+  @keyframes fade{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+
+  .section-title{
+    font-family:'Oswald', sans-serif; font-weight:600; font-size:13px; letter-spacing:0.14em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:14px; display:flex; align-items:center; gap:8px;
+  }
+  .section-title::before{ content:''; width:14px; height:1px; background:var(--ember); display:inline-block; }
+
+  /* Scoreboard */
+  .scoreboard{
+    display:flex; gap:10px; margin-bottom:26px;
+  }
+  .score-card{
+    flex:1; background:var(--surface); border:1px solid var(--divider); border-radius:2px;
+    padding:14px 10px; text-align:center;
+  }
+  .score-num{ font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:28px; color:var(--ember); line-height:1; }
+  .score-num.moss{ color:var(--moss); }
+  .score-label{ font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-top:6px; }
+
+  /* Habit rows */
+  .habit-row{
+    display:flex; align-items:center; gap:14px; padding:14px 4px; border-bottom:1px solid var(--divider);
+  }
+  .stamp-btn{
+    width:40px; height:40px; border-radius:50%; border:2px solid var(--divider); background:transparent;
+    cursor:pointer; flex-shrink:0; position:relative; transition:all .15s ease;
+  }
+  .stamp-btn.done{ border-color:var(--moss); background:var(--moss-dim); }
+  .stamp-btn.done::after{
+    content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--moss); font-size:18px; font-weight:700;
+  }
+  .habit-info{ flex:1; min-width:0; }
+  .habit-name{ font-size:15px; font-weight:500; color:var(--bone); }
+  .habit-streak{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); margin-top:2px; }
+  .habit-streak .n{ color:var(--ember); font-weight:600; }
+  .del-btn{
+    background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; padding:6px;
+    opacity:0.6;
+  }
+
+  /* Punch card grid (habits tab) */
+  .habit-block{ margin-bottom:22px; background:var(--surface); border:1px solid var(--divider); border-radius:3px; padding:16px; }
+  .habit-block-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .habit-block-name{ font-family:'Oswald', sans-serif; font-size:17px; font-weight:600; text-transform:uppercase; letter-spacing:0.01em; }
+  .punch-grid{ display:grid; grid-template-columns:repeat(14,1fr); gap:5px; }
+  .punch{ aspect-ratio:1; border-radius:50%; border:1.5px solid var(--divider); }
+  .punch.on{ background:var(--ember); border-color:var(--ember); }
+
+  /* Forms */
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .field input, .field select{
+    width:100%; background:var(--surface); border:1px solid var(--divider); color:var(--bone);
+    padding:11px 12px; border-radius:2px; font-family:'IBM Plex Sans', sans-serif; font-size:15px;
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--ember); }
+  .row-2{ display:flex; gap:10px; }
+  .row-2 .field{ flex:1; }
+  .btn{
+    width:100%; padding:13px; background:var(--ember); color:var(--ink); border:none; border-radius:2px;
+    font-family:'Oswald', sans-serif; font-weight:600; font-size:14px; letter-spacing:0.08em; text-transform:uppercase;
+    cursor:pointer; margin-top:4px;
+  }
+  .btn.ghost{ background:transparent; border:1px solid var(--divider); color:var(--bone); }
+  .btn.small{ width:auto; padding:8px 16px; font-size:12px; }
+
+  .add-form{ background:var(--surface); border:1px solid var(--divider); border-radius:3px; padding:16px; margin-bottom:20px; }
+
+  /* Exercise log entries */
+  .exercise-line{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .exercise-line input{ background:var(--surface-raised); border:1px solid var(--divider); color:var(--bone); padding:9px; border-radius:2px; font-size:14px; }
+  .exercise-line input.ex-name{ flex:2; }
+  .exercise-line input.ex-num{ flex:1; width:0; }
+  .exercise-line .rm{ background:none; border:none; color:var(--danger); font-size:16px; cursor:pointer; }
+  .add-exercise{ background:none; border:1px dashed var(--divider); color:var(--muted); padding:8px; width:100%; border-radius:2px; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; margin-bottom:12px; }
+
+  /* Workout history cards */
+  .workout-card{ background:var(--surface); border:1px solid var(--divider); border-radius:3px; padding:16px; margin-bottom:12px; }
+  .workout-card-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .workout-date{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); letter-spacing:0.05em; text-transform:uppercase; }
+  .workout-title{ font-family:'Oswald', sans-serif; font-weight:600; font-size:16px; text-transform:uppercase; }
+  .ex-row{ display:flex; justify-content:space-between; font-size:13px; color:var(--muted); padding:4px 0; border-top:1px solid var(--divider); }
+  .ex-row .n{ color:var(--bone); }
+  .ex-row span:last-child{ font-family:'IBM Plex Mono', monospace; }
+
+  /* Empty state */
+  .empty{ text-align:center; padding:50px 20px; color:var(--muted); }
+  .empty .mark{ font-family:'Oswald', sans-serif; font-size:15px; letter-spacing:0.08em; text-transform:uppercase; color:var(--bone); margin-bottom:6px; }
+  .empty p{ font-size:13px; line-height:1.5; }
+
+  /* Weight chart */
+  .chart-wrap{ background:var(--surface); border:1px solid var(--divider); border-radius:3px; padding:16px; margin-bottom:20px; }
+  .chart-stats{ display:flex; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--divider); }
+  .chart-stat{ text-align:center; flex:1; }
+  .chart-stat .v{ font-family:'IBM Plex Mono', monospace; font-size:18px; font-weight:600; color:var(--bone); }
+  .chart-stat .l{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-top:2px; }
+
+  .weight-entry{ display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid var(--divider); font-size:13px; }
+  .weight-entry .d{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11px; }
+  .weight-entry .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; }
+
+  .loading{ display:flex; align-items:center; justify-content:center; height:100vh; color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; }
+
+  /* Bar chart (habit completion / calories) */
+  .bar-chart-svg{ width:100%; display:block; }
+  .bar-legend{ display:flex; gap:16px; margin-top:10px; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+  .legend-dot{ width:9px; height:9px; border-radius:2px; }
+
+  /* Calorie entries */
+  .cal-entry{ display:flex; justify-content:space-between; align-items:center; padding:11px 4px; border-bottom:1px solid var(--divider); font-size:13px; }
+  .cal-entry .d{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11px; flex:1; }
+  .cal-entry .nums{ display:flex; gap:14px; font-family:'IBM Plex Mono', monospace; }
+  .cal-entry .in{ color:var(--ember); }
+  .cal-entry .out{ color:var(--moss); }
+  .cal-entry .net{ color:var(--bone); font-weight:600; }
+
+  /* Goal calculator */
+  .goal-result{ background:var(--surface-raised); border:1px solid var(--divider); border-radius:3px; padding:16px; margin-top:14px; }
+  .goal-headline{ font-family:'Oswald', sans-serif; font-weight:600; font-size:15px; text-transform:uppercase; letter-spacing:0.03em; color:var(--ember); margin-bottom:10px; }
+  .goal-row{ display:flex; justify-content:space-between; padding:7px 0; border-top:1px solid var(--divider); font-size:13px; }
+  .goal-row:first-of-type{ border-top:none; }
+  .goal-row .l{ color:var(--muted); }
+  .goal-row .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--bone); }
+  .goal-note{ font-size:11px; color:var(--muted); margin-top:10px; line-height:1.5; }
+
+  .scoreboard.four .score-card{ padding:12px 6px; }
+  .scoreboard.four .score-num{ font-size:22px; }
+
+  /* Report block */
+  .report-summary{ margin-top:16px; }
+  .report-stat-row{ display:flex; gap:8px; margin-bottom:14px; }
+  .report-stat{ flex:1; background:var(--surface-raised); border:1px solid var(--divider); border-radius:2px; padding:10px 8px; text-align:center; }
+  .report-stat .v{ font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:18px; color:var(--ember); }
+  .report-stat .l{ font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:3px; }
+  .report-table-title{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin:14px 0 8px; }
+  .report-table{ width:100%; border-collapse:collapse; font-size:12px; }
+  .report-table th{ text-align:left; color:var(--muted); font-weight:500; font-size:10px; letter-spacing:0.05em; text-transform:uppercase; padding:6px 4px; border-bottom:1px solid var(--divider); }
+  .report-table td{ padding:7px 4px; border-bottom:1px solid var(--divider); color:var(--bone); }
+  .report-table tr:last-child td{ border-bottom:none; }
+  .export-row{ display:flex; gap:8px; margin-top:16px; }
+  .export-row .btn{ margin-top:0; font-size:11px; padding:11px 4px; }
+  .export-row .btn.excel{ background:var(--moss); color:var(--ink); }
+  .export-row .btn.pdf{ background:var(--danger); color:var(--ink); }
+  .export-row .btn.html{ background:var(--ember); color:var(--ink); }
+
+  ::-webkit-scrollbar{ width:0; height:0; }
+</style>
+</head>
+<body>
+
+<input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="handleImportFile(event)">
+<div class="app" id="app">
+  <div class="loading" id="loading">Opening the ledger…</div>
+</div>
+
+<script>
+const STORAGE_KEY = 'tracker-data';
+let data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, calorieGoal: null };
+let currentTab = 'today';
+let draftExercises = [{name:'', sets:'', reps:'', weight:''}];
+let reportFrom = null, reportTo = null, reportGenerated = null;
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'}); }
+function last14Dates(){ const arr=[]; for(let i=13;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(d.toISOString().slice(0,10)); } return arr; }
+
+async function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ data = JSON.parse(raw); }
+  }catch(e){ console.error('load failed', e); }
+  if(!data.calories) data.calories = {};
+  if(data.calorieGoal===undefined) data.calorieGoal = null;
+  render();
+}
+async function saveData(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  catch(e){ console.error('save failed', e); alert('Could not save — your browser storage may be full or blocked.'); }
+}
+
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ledger-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function triggerImport(){
+  document.getElementById('importFileInput').click();
+}
+function handleImportFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const imported = JSON.parse(reader.result);
+      if(!confirm('Restore this backup? It will replace all current data on this device.')) return;
+      data = {
+        habits: imported.habits || [],
+        checkins: imported.checkins || {},
+        workouts: imported.workouts || [],
+        weights: imported.weights || [],
+        calories: imported.calories || {},
+        calorieGoal: imported.calorieGoal || null
+      };
+      saveData(); render();
+      alert('Backup restored.');
+    }catch(e){
+      alert('That file could not be read as a backup.');
+    }
+  };
+  reader.readAsText(file);
+  evt.target.value = '';
+}
+
+function calcStreak(habitId){
+  let streak=0; let d=new Date();
+  // if today not done yet, streak counts through yesterday
+  const t = todayStr();
+  if(!(data.checkins[t]||[]).includes(habitId)) d.setDate(d.getDate()-1);
+  while(true){
+    const ds = d.toISOString().slice(0,10);
+    if((data.checkins[ds]||[]).includes(habitId)){ streak++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  return streak;
+}
+
+function calcOverallStreak(){
+  if(data.habits.length===0) return 0;
+  let streak=0; let d=new Date();
+  const t = todayStr();
+  const todayDone = (data.checkins[t]||[]).length;
+  if(todayDone < data.habits.length) d.setDate(d.getDate()-1);
+  while(true){
+    const ds = d.toISOString().slice(0,10);
+    const doneCount = (data.checkins[ds]||[]).length;
+    if(doneCount >= data.habits.length && data.habits.length>0){ streak++; d.setDate(d.getDate()-1); }
+    else break;
+  }
+  return streak;
+}
+
+function habitCompletionSeries(numDays){
+  const total = data.habits.length;
+  const arr = [];
+  for(let i=numDays-1;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = d.toISOString().slice(0,10);
+    const done = (data.checkins[ds]||[]).length;
+    const pct = total>0 ? Math.round((Math.min(done,total)/total)*100) : 0;
+    arr.push({ date: ds, pct });
+  }
+  return arr;
+}
+
+function toggleHabit(habitId){
+  const t = todayStr();
+  if(!data.checkins[t]) data.checkins[t] = [];
+  const idx = data.checkins[t].indexOf(habitId);
+  if(idx>-1) data.checkins[t].splice(idx,1);
+  else data.checkins[t].push(habitId);
+  saveData(); render();
+}
+
+function addHabit(name){
+  if(!name.trim()) return;
+  data.habits.push({ id: 'h'+Date.now(), name: name.trim() });
+  saveData(); render();
+}
+function deleteHabit(id){
+  data.habits = data.habits.filter(h=>h.id!==id);
+  Object.keys(data.checkins).forEach(d=>{ data.checkins[d] = (data.checkins[d]||[]).filter(x=>x!==id); });
+  saveData(); render();
+}
+
+function addWorkout(title, exercises){
+  const clean = exercises.filter(e=>e.name.trim());
+  if(!title.trim() || clean.length===0) return;
+  data.workouts.unshift({ id:'w'+Date.now(), date: todayStr(), title: title.trim(), exercises: clean });
+  saveData(); render();
+}
+function deleteWorkout(id){
+  data.workouts = data.workouts.filter(w=>w.id!==id);
+  saveData(); render();
+}
+
+function addWeight(val){
+  const n = parseFloat(val);
+  if(isNaN(n)) return;
+  data.weights = data.weights.filter(w=>w.date!==todayStr());
+  data.weights.push({ date: todayStr(), value: n });
+  data.weights.sort((a,b)=>a.date.localeCompare(b.date));
+  saveData(); render();
+}
+function deleteWeight(date){
+  data.weights = data.weights.filter(w=>w.date!==date);
+  saveData(); render();
+}
+
+function setCalorieEntry(dateStr, inVal, outVal){
+  const inN = parseFloat(inVal); const outN = parseFloat(outVal);
+  if(isNaN(inN) && isNaN(outN)) return;
+  data.calories[dateStr] = { in: isNaN(inN)?0:inN, out: isNaN(outN)?0:outN };
+  saveData(); render();
+}
+function deleteCalorieEntry(date){
+  delete data.calories[date];
+  saveData(); render();
+}
+function calorieDates(numDays){
+  const arr=[]; for(let i=numDays-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(d.toISOString().slice(0,10)); } return arr;
+}
+
+const KCAL_PER_KG = 7700; // approximate energy density of body-fat tissue
+
+function calcGoal(){
+  const cw = parseFloat(document.getElementById('goalCurrentWeight').value);
+  const tw = parseFloat(document.getElementById('goalTargetWeight').value);
+  const days = parseFloat(document.getElementById('goalDays').value);
+  const maint = parseFloat(document.getElementById('goalMaintenance').value);
+  if(isNaN(cw) || isNaN(tw) || isNaN(days) || days<=0) return;
+  data.calorieGoal = { currentWeight: cw, targetWeight: tw, days: days, maintenance: isNaN(maint)?null:maint };
+  saveData(); render();
+}
+function clearGoal(){ data.calorieGoal = null; saveData(); render(); }
+
+function setTab(t){ currentTab = t; render(); }
+
+function renderTabs(){
+  const tabs = [['today','Today'],['habits','Habits'],['workouts','Training'],['calories','Calories'],['progress','Progress']];
+  return `<div class="tabs">${tabs.map(([k,l])=>`<button class="tab ${currentTab===k?'active':''}" onclick="setTab('${k}')">${l}</button>`).join('')}</div>`;
+}
+
+function renderToday(){
+  const t = todayStr();
+  const doneIds = data.checkins[t] || [];
+  const total = data.habits.length;
+  const done = data.habits.filter(h=>doneIds.includes(h.id)).length;
+  const bestStreak = data.habits.reduce((m,h)=>Math.max(m, calcStreak(h.id)), 0);
+  const overallStreak = calcOverallStreak();
+
+  let html = `
+    <div class="scoreboard four">
+      <div class="score-card"><div class="score-num">${done}/${total||0}</div><div class="score-label">Marked Today</div></div>
+      <div class="score-card"><div class="score-num moss">${overallStreak}</div><div class="score-label">Overall Streak</div></div>
+      <div class="score-card"><div class="score-num">${bestStreak}</div><div class="score-label">Best Habit</div></div>
+      <div class="score-card"><div class="score-num">${data.workouts.length}</div><div class="score-label">Sessions</div></div>
+    </div>
+  `;
+
+  if(data.habits.length===0){
+    html += `<div class="empty"><div class="mark">No Habits Yet</div><p>Head to the Habits tab and add the first line to your ledger.</p></div>`;
+  } else {
+    html += `<div class="section-title">Punch In</div>`;
+    data.habits.forEach(h=>{
+      const isDone = doneIds.includes(h.id);
+      const streak = calcStreak(h.id);
+      html += `
+        <div class="habit-row">
+          <button class="stamp-btn ${isDone?'done':''}" onclick="toggleHabit('${h.id}')"></button>
+          <div class="habit-info">
+            <div class="habit-name">${escapeHtml(h.name)}</div>
+            <div class="habit-streak"><span class="n">${streak}</span> day streak</div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  return html;
+}
+
+function renderHabits(){
+  let html = `
+    <div class="add-form">
+      <div class="field">
+        <label>New Habit</label>
+        <input type="text" id="newHabitInput" placeholder="e.g. Morning run, Drink water, Read">
+      </div>
+      <button class="btn" onclick="handleAddHabit()">Add to Ledger</button>
+    </div>
+  `;
+  if(data.habits.length===0){
+    html += `<div class="empty"><div class="mark">Ledger Is Empty</div><p>Add a habit above to start tracking your streak.</p></div>`;
+    return html;
+  }
+
+  // Completion chart — % of habits done each day, last 30 days
+  const series = habitCompletionSeries(30);
+  const cW = 400, cH = 90, gap = 2;
+  const barW = (cW / series.length) - gap;
+  html += `
+    <div class="chart-wrap">
+      <div class="section-title" style="margin-bottom:8px;">Completion Rate — Last 30 Days</div>
+      <svg class="bar-chart-svg" viewBox="0 0 ${cW} ${cH}" preserveAspectRatio="none">
+        ${series.map((s,i)=>{
+          const h = Math.max(2,(s.pct/100)*cH);
+          const x = i*(barW+gap);
+          const y = cH-h;
+          const color = s.pct===100 ? '#8FA876' : s.pct>0 ? '#C4622D' : '#35362A';
+          return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="1"/>`;
+        }).join('')}
+      </svg>
+      <div class="bar-legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#8FA876"></span>Perfect day</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#C4622D"></span>Partial</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#35362A"></span>Missed</div>
+      </div>
+    </div>
+  `;
+
+  const dates = last14Dates();
+  data.habits.forEach(h=>{
+    const streak = calcStreak(h.id);
+    html += `
+      <div class="habit-block">
+        <div class="habit-block-top">
+          <div class="habit-block-name">${escapeHtml(h.name)}</div>
+          <button class="del-btn" onclick="deleteHabit('${h.id}')">✕</button>
+        </div>
+        <div class="habit-streak" style="margin-bottom:10px;"><span class="n">${streak}</span> day streak</div>
+        <div class="punch-grid">
+          ${dates.map(d=>`<div class="punch ${(data.checkins[d]||[]).includes(h.id)?'on':''}"></div>`).join('')}
+        </div>
+      </div>
+    `;
+  });
+  return html;
+}
+
+function renderWorkouts(){
+  let html = `
+    <div class="add-form">
+      <div class="field">
+        <label>Session Name</label>
+        <input type="text" id="workoutTitle" placeholder="e.g. Push Day, Leg Day, 5K Run">
+      </div>
+      <div id="exerciseList"></div>
+      <button class="add-exercise" onclick="handleAddExerciseRow()">+ Add Exercise</button>
+      <button class="btn" onclick="handleAddWorkout()">Log Session</button>
+    </div>
+  `;
+  if(data.workouts.length===0){
+    html += `<div class="empty"><div class="mark">No Sessions Logged</div><p>Log your first training session above.</p></div>`;
+  } else {
+    html += `<div class="section-title">History</div>`;
+    data.workouts.forEach(w=>{
+      html += `
+        <div class="workout-card">
+          <div class="workout-card-top">
+            <div>
+              <div class="workout-title">${escapeHtml(w.title)}</div>
+              <div class="workout-date">${fmtDate(w.date)}</div>
+            </div>
+            <button class="del-btn" onclick="deleteWorkout('${w.id}')">✕</button>
+          </div>
+          ${w.exercises.map(e=>`
+            <div class="ex-row">
+              <span class="n">${escapeHtml(e.name)}</span>
+              <span>${[e.sets&&e.sets+'×'+((e.reps)||'-'), e.weight&&e.weight+'kg'].filter(Boolean).join('  ')}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    });
+  }
+  return html;
+}
+
+function renderExerciseRows(){
+  const wrap = document.getElementById('exerciseList');
+  if(!wrap) return;
+  wrap.innerHTML = draftExercises.map((ex,i)=>`
+    <div class="exercise-line">
+      <input class="ex-name" placeholder="Exercise" value="${escapeAttr(ex.name)}" oninput="draftExercises[${i}].name=this.value">
+      <input class="ex-num" placeholder="Sets" inputmode="numeric" value="${escapeAttr(ex.sets)}" oninput="draftExercises[${i}].sets=this.value">
+      <input class="ex-num" placeholder="Reps" inputmode="numeric" value="${escapeAttr(ex.reps)}" oninput="draftExercises[${i}].reps=this.value">
+      <input class="ex-num" placeholder="Kg" inputmode="decimal" value="${escapeAttr(ex.weight)}" oninput="draftExercises[${i}].weight=this.value">
+      <button class="rm" onclick="removeExerciseRow(${i})">✕</button>
+    </div>
+  `).join('');
+}
+function handleAddExerciseRow(){ draftExercises.push({name:'',sets:'',reps:'',weight:''}); renderExerciseRows(); }
+function removeExerciseRow(i){ if(draftExercises.length>1){ draftExercises.splice(i,1); renderExerciseRows(); } }
+
+function handleAddWorkout(){
+  const title = document.getElementById('workoutTitle').value;
+  addWorkout(title, draftExercises);
+  draftExercises = [{name:'',sets:'',reps:'',weight:''}];
+}
+
+function handleAddHabit(){
+  const input = document.getElementById('newHabitInput');
+  addHabit(input.value);
+}
+
+function handleAddCalorieEntry(){
+  const date = document.getElementById('calDate').value || todayStr();
+  const inVal = document.getElementById('calIn').value;
+  const outVal = document.getElementById('calOut').value;
+  setCalorieEntry(date, inVal, outVal);
+}
+
+function renderCalorieChart(){
+  const dates = calorieDates(14);
+  const cW = 400, cH = 110, gap = 4;
+  const groupW = (cW/dates.length);
+  const barW = (groupW-gap)/2 - 1;
+  const maxVal = Math.max(200, ...dates.map(d=>{
+    const e = data.calories[d]||{in:0,out:0};
+    return Math.max(e.in,e.out);
+  }));
+  return `
+    <div class="chart-wrap">
+      <div class="section-title" style="margin-bottom:8px;">Intake vs Burn — Last 14 Days</div>
+      <svg class="bar-chart-svg" viewBox="0 0 ${cW} ${cH}" preserveAspectRatio="none">
+        ${dates.map((d,i)=>{
+          const e = data.calories[d]||{in:0,out:0};
+          const hIn = e.in>0 ? Math.max(2,(e.in/maxVal)*cH) : 0;
+          const hOut = e.out>0 ? Math.max(2,(e.out/maxVal)*cH) : 0;
+          const gx = i*groupW;
+          return `
+            <rect x="${gx.toFixed(1)}" y="${(cH-hIn).toFixed(1)}" width="${barW.toFixed(1)}" height="${hIn.toFixed(1)}" fill="#C4622D" rx="1"/>
+            <rect x="${(gx+barW+2).toFixed(1)}" y="${(cH-hOut).toFixed(1)}" width="${barW.toFixed(1)}" height="${hOut.toFixed(1)}" fill="#8FA876" rx="1"/>
+          `;
+        }).join('')}
+      </svg>
+      <div class="bar-legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#C4622D"></span>Calories In</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#8FA876"></span>Calories Burned</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderGoalCalculator(){
+  const g = data.calorieGoal;
+  const latestWeight = data.weights.length ? data.weights[data.weights.length-1].value : '';
+  let resultHtml = '';
+  if(g){
+    const diff = g.currentWeight - g.targetWeight;
+    const direction = diff>0 ? 'lose' : diff<0 ? 'gain' : 'maintain';
+    const totalCal = Math.abs(diff) * KCAL_PER_KG;
+    const dailyChange = g.days>0 ? totalCal / g.days : 0;
+    let recommendedIntake = null;
+    if(g.maintenance!==null && g.maintenance!==undefined){
+      recommendedIntake = direction==='lose' ? g.maintenance - dailyChange : direction==='gain' ? g.maintenance + dailyChange : g.maintenance;
+    }
+    resultHtml = `
+      <div class="goal-result">
+        <div class="goal-headline">${direction==='maintain' ? 'Already at target' : `${Math.abs(diff).toFixed(1)} kg to ${direction}`}</div>
+        <div class="goal-row"><span class="l">Total calories to ${direction==='gain'?'consume extra':'burn net'}</span><span class="v">${Math.round(totalCal).toLocaleString()} kcal</span></div>
+        <div class="goal-row"><span class="l">Daily ${direction==='gain'?'surplus':'deficit'} needed</span><span class="v">${Math.round(dailyChange).toLocaleString()} kcal/day</span></div>
+        ${recommendedIntake!==null ? `<div class="goal-row"><span class="l">Recommended daily intake</span><span class="v">${Math.round(recommendedIntake).toLocaleString()} kcal</span></div>` : ''}
+        <div class="goal-note">Estimate uses ~7700 kcal per kg of body weight. Enter your daily maintenance calories above to see a suggested intake target. This is a general estimate, not medical advice.</div>
+        <button class="btn ghost small" style="margin-top:12px;" onclick="clearGoal()">Reset Calculator</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="add-form">
+      <div class="section-title" style="margin-bottom:12px;">Goal Calculator</div>
+      <div class="row-2">
+        <div class="field">
+          <label>Current Weight (kg)</label>
+          <input type="number" step="0.1" id="goalCurrentWeight" value="${g ? g.currentWeight : latestWeight}" placeholder="e.g. 78">
+        </div>
+        <div class="field">
+          <label>Target Weight (kg)</label>
+          <input type="number" step="0.1" id="goalTargetWeight" value="${g ? g.targetWeight : ''}" placeholder="e.g. 72">
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Timeframe (days)</label>
+          <input type="number" id="goalDays" value="${g ? g.days : ''}" placeholder="e.g. 60">
+        </div>
+        <div class="field">
+          <label>Maintenance Cal/day (optional)</label>
+          <input type="number" id="goalMaintenance" value="${g && g.maintenance!==null ? g.maintenance : ''}" placeholder="e.g. 2200">
+        </div>
+      </div>
+      <button class="btn" onclick="calcGoal()">Calculate</button>
+      ${resultHtml}
+    </div>
+  `;
+}
+
+function renderCalories(){
+  let html = `
+    <div class="add-form">
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="calDate" value="${todayStr()}">
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Calories In</label>
+          <input type="number" id="calIn" placeholder="e.g. 2100">
+        </div>
+        <div class="field">
+          <label>Calories Burned</label>
+          <input type="number" id="calOut" placeholder="e.g. 450">
+        </div>
+      </div>
+      <button class="btn" onclick="handleAddCalorieEntry()">Save Entry</button>
+    </div>
+  `;
+
+  const hasEntries = Object.keys(data.calories).length > 0;
+  if(hasEntries){
+    html += renderCalorieChart();
+  }
+
+  html += renderGoalCalculator();
+
+  if(hasEntries){
+    html += `<div class="section-title">Log</div>`;
+    Object.keys(data.calories).sort().reverse().slice(0,20).forEach(d=>{
+      const e = data.calories[d];
+      const net = e.in - e.out;
+      html += `
+        <div class="cal-entry">
+          <span class="d">${fmtDate(d)}</span>
+          <span class="nums">
+            <span class="in">${e.in} in</span>
+            <span class="out">${e.out} out</span>
+            <span class="net">${net>0?'+':''}${net} net</span>
+          </span>
+          <button class="del-btn" onclick="deleteCalorieEntry('${d}')">✕</button>
+        </div>
+      `;
+    });
+  }
+
+  return html;
+}
+
+function defaultReportDates(){
+  if(!reportTo) reportTo = todayStr();
+  if(!reportFrom){ const d = new Date(); d.setDate(d.getDate()-30); reportFrom = d.toISOString().slice(0,10); }
+}
+
+function generateReport(){
+  const from = document.getElementById('reportFrom').value;
+  const to = document.getElementById('reportTo').value;
+  if(!from || !to || from > to){ alert('Please choose a valid From date that is on or before the To date.'); return; }
+  reportFrom = from; reportTo = to;
+  reportGenerated = compileReport(from, to);
+  render();
+}
+
+function compileReport(from, to){
+  const inRange = (d) => d>=from && d<=to;
+  const habitDays = [];
+  let cursor = new Date(from+'T00:00:00');
+  const end = new Date(to+'T00:00:00');
+  while(cursor <= end){
+    const ds = cursor.toISOString().slice(0,10);
+    const doneIds = data.checkins[ds] || [];
+    habitDays.push({ date: ds, done: doneIds.length, total: data.habits.length });
+    cursor.setDate(cursor.getDate()+1);
+  }
+  const weights = data.weights.filter(w=>inRange(w.date));
+  const workouts = data.workouts.filter(w=>inRange(w.date));
+  const calorieEntries = Object.keys(data.calories).filter(inRange).sort()
+    .map(d=>({ date: d, in: data.calories[d].in, out: data.calories[d].out }));
+  return { from, to, habitDays, weights, workouts, calorieEntries };
+}
+
+function renderReportSummary(r){
+  const totalDays = r.habitDays.length;
+  const perfectDays = r.habitDays.filter(d=>d.total>0 && d.done>=d.total).length;
+  const avgCompletion = totalDays>0
+    ? Math.round(r.habitDays.reduce((s,d)=> s + (d.total>0 ? (d.done/d.total*100) : 0), 0) / totalDays)
+    : 0;
+  const totalCalIn = r.calorieEntries.reduce((s,e)=>s+e.in,0);
+  const totalCalOut = r.calorieEntries.reduce((s,e)=>s+e.out,0);
+
+  let html = `
+    <div class="report-summary">
+      <div class="report-stat-row">
+        <div class="report-stat"><div class="v">${perfectDays}</div><div class="l">Perfect Days</div></div>
+        <div class="report-stat"><div class="v">${avgCompletion}%</div><div class="l">Avg Completion</div></div>
+        <div class="report-stat"><div class="v">${r.workouts.length}</div><div class="l">Workouts</div></div>
+        <div class="report-stat"><div class="v">${r.weights.length}</div><div class="l">Weight Logs</div></div>
+      </div>
+  `;
+
+  if(r.weights.length){
+    html += `<div class="report-table-title">Weight Entries</div>
+      <table class="report-table"><thead><tr><th>Date</th><th>Weight (kg)</th></tr></thead><tbody>
+      ${r.weights.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${w.value}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+  if(r.workouts.length){
+    html += `<div class="report-table-title">Workout Sessions</div>
+      <table class="report-table"><thead><tr><th>Date</th><th>Session</th><th>Exercises</th></tr></thead><tbody>
+      ${r.workouts.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${escapeHtml(w.title)}</td><td>${w.exercises.length}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+  if(r.calorieEntries.length){
+    html += `<div class="report-table-title">Calories &nbsp;·&nbsp; In ${totalCalIn} · Out ${totalCalOut}</div>
+      <table class="report-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Net</th></tr></thead><tbody>
+      ${r.calorieEntries.map(e=>`<tr><td>${fmtDate(e.date)}</td><td>${e.in}</td><td>${e.out}</td><td>${e.in-e.out}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+
+  html += `
+      <div class="export-row">
+        <button class="btn html" onclick="downloadReportHTML()">HTML</button>
+        <button class="btn excel" onclick="downloadReportExcel()">Excel</button>
+        <button class="btn pdf" onclick="downloadReportPDF()">PDF</button>
+      </div>
+    </div>
+  `;
+  return html;
+}
+
+function triggerFileDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildHTMLReportDoc(r){
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ledger Report ${r.from} to ${r.to}</title>
+  <style>
+    body{ font-family: Arial, Helvetica, sans-serif; background:#fff; color:#222; padding:24px; max-width:800px; margin:0 auto; }
+    h1{ font-size:20px; margin-bottom:4px; } .sub{ color:#777; font-size:13px; margin-bottom:20px; }
+    h2{ font-size:15px; margin-top:26px; border-bottom:2px solid #C4622D; padding-bottom:5px; }
+    table{ border-collapse:collapse; width:100%; margin-top:8px; }
+    th,td{ border:1px solid #ddd; padding:7px 9px; font-size:13px; text-align:left; }
+    th{ background:#f4f4f4; }
+    tr:nth-child(even){ background:#fafafa; }
+  </style></head><body>
+  <h1>Fitness &amp; Habit Ledger — Report</h1>
+  <div class="sub">${fmtDate(r.from)} to ${fmtDate(r.to)}</div>
+  <h2>Habit Completion by Day</h2>
+  <table><thead><tr><th>Date</th><th>Done</th><th>Total</th><th>%</th></tr></thead><tbody>
+  ${r.habitDays.map(d=>`<tr><td>${fmtDate(d.date)}</td><td>${d.done}</td><td>${d.total}</td><td>${d.total>0?Math.round(d.done/d.total*100):0}%</td></tr>`).join('')}
+  </tbody></table>
+  ${r.weights.length ? `<h2>Weight</h2><table><thead><tr><th>Date</th><th>Weight (kg)</th></tr></thead><tbody>${r.weights.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${w.value}</td></tr>`).join('')}</tbody></table>` : ''}
+  ${r.workouts.length ? `<h2>Workouts</h2><table><thead><tr><th>Date</th><th>Session</th><th>Exercises</th></tr></thead><tbody>${r.workouts.map(w=>`<tr><td>${fmtDate(w.date)}</td><td>${escapeHtml(w.title)}</td><td>${w.exercises.map(e=>escapeHtml(e.name)+(e.sets?` (${e.sets}×${e.reps||'-'}${e.weight?', '+e.weight+'kg':''})`:'')).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}
+  ${r.calorieEntries.length ? `<h2>Calories</h2><table><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Net</th></tr></thead><tbody>${r.calorieEntries.map(e=>`<tr><td>${fmtDate(e.date)}</td><td>${e.in}</td><td>${e.out}</td><td>${e.in-e.out}</td></tr>`).join('')}</tbody></table>` : ''}
+  </body></html>`;
+}
+
+function downloadReportHTML(){
+  if(!reportGenerated) return;
+  const r = reportGenerated;
+  const blob = new Blob([buildHTMLReportDoc(r)], { type:'text/html' });
+  triggerFileDownload(blob, `ledger-report-${r.from}_to_${r.to}.html`);
+}
+
+function downloadReportExcel(){
+  if(!reportGenerated) return;
+  if(typeof XLSX === 'undefined'){ alert('Excel library did not load — check your internet connection and try again.'); return; }
+  const r = reportGenerated;
+  const wb = XLSX.utils.book_new();
+
+  const habitSheet = XLSX.utils.json_to_sheet(r.habitDays.map(d=>({
+    Date: d.date, Done: d.done, Total: d.total, Percent: d.total>0 ? Math.round(d.done/d.total*100) : 0
+  })));
+  XLSX.utils.book_append_sheet(wb, habitSheet, 'Habits');
+
+  if(r.weights.length){
+    const wSheet = XLSX.utils.json_to_sheet(r.weights.map(w=>({ Date:w.date, Weight_kg:w.value })));
+    XLSX.utils.book_append_sheet(wb, wSheet, 'Weight');
+  }
+  if(r.workouts.length){
+    const rows = [];
+    r.workouts.forEach(w=> w.exercises.forEach(e=> rows.push({
+      Date:w.date, Session:w.title, Exercise:e.name, Sets:e.sets||'', Reps:e.reps||'', Weight_kg:e.weight||''
+    })));
+    const woSheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, woSheet, 'Workouts');
+  }
+  if(r.calorieEntries.length){
+    const cSheet = XLSX.utils.json_to_sheet(r.calorieEntries.map(e=>({
+      Date:e.date, Calories_In:e.in, Calories_Out:e.out, Net:e.in-e.out
+    })));
+    XLSX.utils.book_append_sheet(wb, cSheet, 'Calories');
+  }
+  XLSX.writeFile(wb, `ledger-report-${r.from}_to_${r.to}.xlsx`);
+}
+
+function downloadReportPDF(){
+  if(!reportGenerated) return;
+  if(typeof window.jspdf === 'undefined'){ alert('PDF library did not load — check your internet connection and try again.'); return; }
+  const r = reportGenerated;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text('Fitness & Habit Ledger — Report', 14, 18);
+  doc.setFontSize(10);
+  doc.setTextColor(120);
+  doc.text(`${r.from} to ${r.to}`, 14, 25);
+  doc.setTextColor(0);
+
+  doc.autoTable({
+    startY: 32,
+    head: [['Date','Done','Total','%']],
+    body: r.habitDays.map(d=>[d.date, d.done, d.total, (d.total>0?Math.round(d.done/d.total*100):0)+'%']),
+    styles:{fontSize:8}, headStyles:{fillColor:[196,98,45]}
+  });
+  let y = doc.lastAutoTable.finalY + 10;
+
+  if(r.weights.length){
+    doc.setFontSize(12); doc.text('Weight', 14, y); y += 4;
+    doc.autoTable({ startY:y, head:[['Date','Weight (kg)']], body:r.weights.map(w=>[w.date,w.value]), styles:{fontSize:8}, headStyles:{fillColor:[196,98,45]} });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+  if(r.workouts.length){
+    doc.setFontSize(12); doc.text('Workouts', 14, y); y += 4;
+    const rows = [];
+    r.workouts.forEach(w=> w.exercises.forEach(e=> rows.push([w.date, w.title, e.name, e.sets||'', e.reps||'', e.weight||''])));
+    doc.autoTable({ startY:y, head:[['Date','Session','Exercise','Sets','Reps','Kg']], body:rows, styles:{fontSize:8}, headStyles:{fillColor:[196,98,45]} });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+  if(r.calorieEntries.length){
+    doc.setFontSize(12); doc.text('Calories', 14, y); y += 4;
+    doc.autoTable({ startY:y, head:[['Date','In','Out','Net']], body:r.calorieEntries.map(e=>[e.date,e.in,e.out,e.in-e.out]), styles:{fontSize:8}, headStyles:{fillColor:[196,98,45]} });
+  }
+  doc.save(`ledger-report-${r.from}_to_${r.to}.pdf`);
+}
+
+function renderProgress(){
+  defaultReportDates();
+  let html = `
+    <div class="add-form">
+      <div class="row-2">
+        <div class="field">
+          <label>Today's Weight (kg)</label>
+          <input type="number" step="0.1" id="weightInput" placeholder="e.g. 72.5">
+        </div>
+      </div>
+      <button class="btn" onclick="handleAddWeight()">Log Weight</button>
+    </div>
+  `;
+
+  if(data.weights.length===0){
+    html += `<div class="empty"><div class="mark">No Weight Entries Yet</div><p>Log today's weight to start your progress line.</p></div>`;
+  } else {
+    const w = data.weights;
+    const latest = w[w.length-1].value;
+    const first = w[0].value;
+    const diff = (latest-first).toFixed(1);
+    const min = Math.min(...w.map(x=>x.value));
+    const max = Math.max(...w.map(x=>x.value));
+
+    const chartW = 400, chartH = 120, pad = 10;
+    const range = (max-min)||1;
+    const pts = w.map((pt,i)=>{
+      const x = w.length>1 ? pad + (i/(w.length-1))*(chartW-2*pad) : chartW/2;
+      const y = chartH - pad - ((pt.value-min)/range)*(chartH-2*pad);
+      return [x,y];
+    });
+    const pathD = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+
+    html += `
+      <div class="chart-wrap">
+        <div class="section-title" style="margin-bottom:6px;">Weight Trend</div>
+        <svg viewBox="0 0 ${chartW} ${chartH}" width="100%" height="${chartH}" preserveAspectRatio="none">
+          <path d="${pathD}" fill="none" stroke="#C4622D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+          ${pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#EDE8DA"/>`).join('')}
+        </svg>
+        <div class="chart-stats">
+          <div class="chart-stat"><div class="v">${latest}</div><div class="l">Latest</div></div>
+          <div class="chart-stat"><div class="v" style="color:${diff<=0?'#8FA876':'#C4622D'}">${diff>0?'+':''}${diff}</div><div class="l">Change</div></div>
+          <div class="chart-stat"><div class="v">${min}–${max}</div><div class="l">Range</div></div>
+        </div>
+      </div>
+      <div class="section-title">Recent Log</div>
+    `;
+    [...w].reverse().slice(0,20).forEach(entry=>{
+      html += `
+        <div class="weight-entry">
+          <span class="d">${fmtDate(entry.date)}</span>
+          <span class="v">${entry.value} kg</span>
+          <button class="del-btn" onclick="deleteWeight('${entry.date}')">✕</button>
+        </div>
+      `;
+    });
+  }
+
+  html += `
+    <div class="add-form" style="margin-top:22px;">
+      <div class="section-title" style="margin-bottom:12px;">Full History Report</div>
+      <div class="row-2">
+        <div class="field"><label>From</label><input type="date" id="reportFrom" value="${reportFrom}"></div>
+        <div class="field"><label>To</label><input type="date" id="reportTo" value="${reportTo}"></div>
+      </div>
+      <button class="btn" onclick="generateReport()">Generate Report</button>
+      ${reportGenerated ? renderReportSummary(reportGenerated) : ''}
+    </div>
+  `;
+
+  return html;
+}
+
+function handleAddWeight(){
+  const input = document.getElementById('weightInput');
+  addWeight(input.value);
+}
+
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+function render(){
+  const now = new Date();
+  const dayName = now.toLocaleDateString('en-US',{weekday:'long'});
+  const dateNum = now.getDate();
+  const monthYear = now.toLocaleDateString('en-US',{month:'long', year:'numeric'});
+
+  let viewHtml = '';
+  if(currentTab==='today') viewHtml = renderToday();
+  else if(currentTab==='habits') viewHtml = renderHabits();
+  else if(currentTab==='workouts') viewHtml = renderWorkouts();
+  else if(currentTab==='calories') viewHtml = renderCalories();
+  else if(currentTab==='progress') viewHtml = renderProgress();
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="eyebrow">The Ledger — Training Log</div>
+      <div class="date-stamp">${dayName}<span class="day">${dateNum}</span><span style="font-size:16px; color:var(--muted); text-transform:none; font-family:'IBM Plex Sans',sans-serif; font-weight:400;">${monthYear}</span></div>
+      <div class="backup-bar">
+        <button class="backup-link" onclick="exportBackup()">⤓ Backup</button>
+        <button class="backup-link" onclick="triggerImport()">⤒ Restore</button>
+      </div>
+    </div>
+    ${renderTabs()}
+    <div class="view active">${viewHtml}</div>
+  `;
+
+  if(currentTab==='workouts') renderExerciseRows();
+}
+
+loadData();
+</script>
+</body>
+</html>
