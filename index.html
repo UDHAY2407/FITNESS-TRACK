@@ -266,11 +266,12 @@
 </div>
 
 <script>
-let data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, calorieGoal: null };
+let data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, calorieGoal: null, bmrProfile: null };
 let currentTab = 'today';
 let draftExercises = [{name:'', sets:'', reps:'', weight:''}];
 let reportFrom = null, reportTo = null, reportGenerated = null;
 let selectedEntryDate = null;
+let editingWorkoutId = null;
 let currentUser = null;
 let authMode = 'signin';
 let authError = '';
@@ -294,11 +295,12 @@ async function loadData(){
     if(docSnap.exists && docSnap.data().payload){
       data = JSON.parse(docSnap.data().payload);
     } else {
-      data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, calorieGoal: null };
+      data = { habits: [], checkins: {}, workouts: [], weights: [], calories: {}, calorieGoal: null, bmrProfile: null };
     }
   }catch(e){ console.error('load failed', e); alert('Could not load your data — check your internet connection.'); }
   if(!data.calories) data.calories = {};
   if(data.calorieGoal===undefined) data.calorieGoal = null;
+  if(data.bmrProfile===undefined) data.bmrProfile = null;
   render();
 }
 async function saveData(){
@@ -427,7 +429,8 @@ function handleImportFile(evt){
         workouts: imported.workouts || [],
         weights: imported.weights || [],
         calories: imported.calories || {},
-        calorieGoal: imported.calorieGoal || null
+        calorieGoal: imported.calorieGoal || null,
+        bmrProfile: imported.bmrProfile || null
       };
       saveData(); render();
       alert('Backup restored.');
@@ -512,8 +515,33 @@ function addWorkout(title, exercises, date){
   data.workouts.sort((a,b)=> b.date.localeCompare(a.date) || 0);
   saveData(); render();
 }
+function updateWorkout(id, title, exercises, date){
+  const clean = exercises.filter(e=>e.name.trim());
+  if(!title.trim() || clean.length===0) return;
+  const idx = data.workouts.findIndex(w=>w.id===id);
+  if(idx===-1) return;
+  data.workouts[idx] = { ...data.workouts[idx], title: title.trim(), date: date || data.workouts[idx].date, exercises: clean };
+  data.workouts.sort((a,b)=> b.date.localeCompare(a.date) || 0);
+  saveData(); render();
+}
+function editWorkout(id){
+  const w = data.workouts.find(x=>x.id===id);
+  if(!w) return;
+  editingWorkoutId = id;
+  draftExercises = w.exercises.map(e=>({ name:e.name, sets:e.sets||'', reps:e.reps||'', weight:e.weight||'' }));
+  currentTab = 'workouts';
+  render();
+  const top = document.querySelector('.view.active');
+  if(top) top.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function cancelEditWorkout(){
+  editingWorkoutId = null;
+  draftExercises = [{name:'',sets:'',reps:'',weight:''}];
+  render();
+}
 function deleteWorkout(id){
   data.workouts = data.workouts.filter(w=>w.id!==id);
+  if(editingWorkoutId===id){ editingWorkoutId = null; draftExercises = [{name:'',sets:'',reps:'',weight:''}]; }
   saveData(); render();
 }
 
@@ -526,6 +554,15 @@ function addWeight(val, date){
   data.weights.sort((a,b)=>a.date.localeCompare(b.date));
   saveData(); render();
 }
+function editWeight(date){
+  const entry = data.weights.find(w=>w.date===date);
+  if(!entry) return;
+  const valInput = document.getElementById('weightInput');
+  const dateInput = document.getElementById('weightDate');
+  if(valInput) valInput.value = entry.value;
+  if(dateInput) dateInput.value = entry.date;
+  if(valInput){ valInput.scrollIntoView({behavior:'smooth', block:'center'}); valInput.focus(); }
+}
 function deleteWeight(date){
   data.weights = data.weights.filter(w=>w.date!==date);
   saveData(); render();
@@ -536,6 +573,17 @@ function setCalorieEntry(dateStr, inVal, outVal){
   if(isNaN(inN) && isNaN(outN)) return;
   data.calories[dateStr] = { in: isNaN(inN)?0:inN, out: isNaN(outN)?0:outN };
   saveData(); render();
+}
+function editCalorieEntry(date){
+  const entry = data.calories[date];
+  if(!entry) return;
+  const dateInput = document.getElementById('calDate');
+  const inInput = document.getElementById('calIn');
+  const outInput = document.getElementById('calOut');
+  if(dateInput) dateInput.value = date;
+  if(inInput) inInput.value = entry.in;
+  if(outInput) outInput.value = entry.out;
+  if(dateInput){ dateInput.scrollIntoView({behavior:'smooth', block:'center'}); }
 }
 function deleteCalorieEntry(date){
   delete data.calories[date];
@@ -670,21 +718,24 @@ function renderHabits(){
 }
 
 function renderWorkouts(){
+  const editing = editingWorkoutId ? data.workouts.find(w=>w.id===editingWorkoutId) : null;
   let html = `
     <div class="add-form">
+      ${editing ? `<div class="section-title" style="margin-bottom:12px; color:var(--ember);">Editing Session</div>` : ''}
       <div class="row-2">
         <div class="field" style="flex:2;">
           <label>Session Name</label>
-          <input type="text" id="workoutTitle" placeholder="e.g. Push Day, Leg Day, 5K Run">
+          <input type="text" id="workoutTitle" placeholder="e.g. Push Day, Leg Day, 5K Run" value="${editing ? escapeAttr(editing.title) : ''}">
         </div>
         <div class="field">
           <label>Date</label>
-          <input type="date" id="workoutDate" value="${todayStr()}" max="${todayStr()}">
+          <input type="date" id="workoutDate" value="${editing ? editing.date : todayStr()}" max="${todayStr()}">
         </div>
       </div>
       <div id="exerciseList"></div>
       <button class="add-exercise" onclick="handleAddExerciseRow()">+ Add Exercise</button>
-      <button class="btn" onclick="handleAddWorkout()">Log Session</button>
+      <button class="btn" onclick="handleAddWorkout()">${editing ? 'Update Session' : 'Log Session'}</button>
+      ${editing ? `<button class="btn ghost small" style="margin-top:8px; width:100%;" onclick="cancelEditWorkout()">Cancel Edit</button>` : ''}
     </div>
   `;
   if(data.workouts.length===0){
@@ -692,14 +743,18 @@ function renderWorkouts(){
   } else {
     html += `<div class="section-title">History</div>`;
     data.workouts.forEach(w=>{
+      const isEditing = w.id===editingWorkoutId;
       html += `
-        <div class="workout-card">
+        <div class="workout-card" style="${isEditing ? 'border-color:var(--ember);' : ''}">
           <div class="workout-card-top">
             <div>
               <div class="workout-title">${escapeHtml(w.title)}</div>
               <div class="workout-date">${fmtDate(w.date)}</div>
             </div>
-            <button class="del-btn" onclick="deleteWorkout('${w.id}')">✕</button>
+            <div style="display:flex; gap:6px;">
+              <button class="del-btn" onclick="editWorkout('${w.id}')" title="Edit">✎</button>
+              <button class="del-btn" onclick="deleteWorkout('${w.id}')" title="Delete">✕</button>
+            </div>
           </div>
           ${w.exercises.map(e=>`
             <div class="ex-row">
@@ -738,7 +793,12 @@ function removeExerciseRow(i){ if(draftExercises.length>1){ draftExercises.splic
 function handleAddWorkout(){
   const title = document.getElementById('workoutTitle').value;
   const date = document.getElementById('workoutDate').value;
-  addWorkout(title, draftExercises, date);
+  if(editingWorkoutId){
+    updateWorkout(editingWorkoutId, title, draftExercises, date);
+    editingWorkoutId = null;
+  } else {
+    addWorkout(title, draftExercises, date);
+  }
   draftExercises = [{name:'',sets:'',reps:'',weight:''}];
 }
 
@@ -786,8 +846,33 @@ function renderCalorieChart(){
   `;
 }
 
+function calcBMRMaintenance(){
+  const age = parseFloat(document.getElementById('bmrAge').value);
+  const height = parseFloat(document.getElementById('bmrHeight').value);
+  const gender = document.getElementById('bmrGender').value;
+  const activity = document.getElementById('bmrActivity').value;
+  const weightInput = document.getElementById('goalCurrentWeight');
+  const weight = parseFloat(weightInput ? weightInput.value : NaN);
+  const resultEl = document.getElementById('bmrResult');
+  if(isNaN(age) || isNaN(height) || isNaN(weight)){
+    if(resultEl) resultEl.innerHTML = `<div class="auth-error" style="margin-top:10px;">Fill in Age, Height, and Current Weight (above) first.</div>`;
+    return;
+  }
+  data.bmrProfile = { age, height, gender, activity };
+  saveData();
+  const bmr = gender==='female'
+    ? (10*weight + 6.25*height - 5*age - 161)
+    : (10*weight + 6.25*height - 5*age + 5);
+  const factors = { sedentary:1.2, light:1.375, moderate:1.55, active:1.725, veryactive:1.9 };
+  const maintenance = Math.round(bmr * (factors[activity] || 1.2));
+  const maintInput = document.getElementById('goalMaintenance');
+  if(maintInput) maintInput.value = maintenance;
+  if(resultEl) resultEl.innerHTML = `<div class="goal-note" style="margin-top:10px;">Estimated maintenance: <strong style="color:var(--bone)">${maintenance.toLocaleString()} kcal/day</strong> — filled into the field above. Uses the Mifflin-St Jeor formula, a widely-used estimate, not a medical measurement.</div>`;
+}
+
 function renderGoalCalculator(){
   const g = data.calorieGoal;
+  const bp = data.bmrProfile || {};
   const latestWeight = data.weights.length ? data.weights[data.weights.length-1].value : '';
   let resultHtml = '';
   if(g){
@@ -833,7 +918,41 @@ function renderGoalCalculator(){
           <input type="number" id="goalMaintenance" value="${g && g.maintenance!==null ? g.maintenance : ''}" placeholder="e.g. 2200">
         </div>
       </div>
-      <button class="btn" onclick="calcGoal()">Calculate</button>
+
+      <div class="section-title" style="margin-top:6px; margin-bottom:10px;">Don't Know Your Maintenance? Estimate It</div>
+      <div class="row-2">
+        <div class="field">
+          <label>Age</label>
+          <input type="number" id="bmrAge" value="${bp.age||''}" placeholder="e.g. 28">
+        </div>
+        <div class="field">
+          <label>Height (cm)</label>
+          <input type="number" id="bmrHeight" value="${bp.height||''}" placeholder="e.g. 175">
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Gender</label>
+          <select id="bmrGender">
+            <option value="male" ${bp.gender==='male'?'selected':''}>Male</option>
+            <option value="female" ${bp.gender==='female'?'selected':''}>Female</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Activity Level</label>
+          <select id="bmrActivity">
+            <option value="sedentary" ${bp.activity==='sedentary'?'selected':''}>Sedentary</option>
+            <option value="light" ${(!bp.activity||bp.activity==='light')?'selected':''}>Light (1–3d/wk)</option>
+            <option value="moderate" ${bp.activity==='moderate'?'selected':''}>Moderate (3–5d/wk)</option>
+            <option value="active" ${bp.activity==='active'?'selected':''}>Active (6–7d/wk)</option>
+            <option value="veryactive" ${bp.activity==='veryactive'?'selected':''}>Very Active</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn ghost" onclick="calcBMRMaintenance()">Estimate Maintenance Calories</button>
+      <div id="bmrResult"></div>
+
+      <button class="btn" style="margin-top:16px;" onclick="calcGoal()">Calculate</button>
       ${resultHtml}
     </div>
   `;
@@ -880,7 +999,10 @@ function renderCalories(){
             <span class="out">${e.out} out</span>
             <span class="net">${net>0?'+':''}${net} net</span>
           </span>
-          <button class="del-btn" onclick="deleteCalorieEntry('${d}')">✕</button>
+          <div style="display:flex; gap:4px;">
+            <button class="del-btn" onclick="editCalorieEntry('${d}')" title="Edit">✎</button>
+            <button class="del-btn" onclick="deleteCalorieEntry('${d}')" title="Delete">✕</button>
+          </div>
         </div>
       `;
     });
@@ -1105,8 +1227,11 @@ function renderProgress(){
     const latest = w[w.length-1].value;
     const first = w[0].value;
     const diff = (latest-first).toFixed(1);
-    const min = Math.min(...w.map(x=>x.value));
-    const max = Math.max(...w.map(x=>x.value));
+    let min = Math.min(...w.map(x=>x.value));
+    let max = Math.max(...w.map(x=>x.value));
+    const target = (data.calorieGoal && data.calorieGoal.targetWeight!==undefined && data.calorieGoal.targetWeight!==null && !isNaN(data.calorieGoal.targetWeight))
+      ? data.calorieGoal.targetWeight : null;
+    if(target !== null){ min = Math.min(min, target); max = Math.max(max, target); }
 
     const chartW = 400, chartH = 120, pad = 10;
     const range = (max-min)||1;
@@ -1117,17 +1242,31 @@ function renderProgress(){
     });
     const pathD = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
 
+    let targetLineSvg = '';
+    if(target !== null){
+      const ty = chartH - pad - ((target-min)/range)*(chartH-2*pad);
+      targetLineSvg = `
+        <line x1="${pad}" y1="${ty.toFixed(1)}" x2="${chartW-pad}" y2="${ty.toFixed(1)}" stroke="#8FA876" stroke-width="1.5" stroke-dasharray="5,4"/>
+      `;
+    }
+    const toGoalStat = target !== null
+      ? `<div class="chart-stat"><div class="v" style="color:#8FA876">${(latest-target)>=0?'+':''}${(latest-target).toFixed(1)}</div><div class="l">To Target</div></div>`
+      : '';
+
     html += `
       <div class="chart-wrap">
         <div class="section-title" style="margin-bottom:6px;">Weight Trend</div>
         <svg viewBox="0 0 ${chartW} ${chartH}" width="100%" height="${chartH}" preserveAspectRatio="none">
+          ${targetLineSvg}
           <path d="${pathD}" fill="none" stroke="#C4622D" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
           ${pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#EDE8DA"/>`).join('')}
         </svg>
+        ${target !== null ? `<div class="bar-legend"><div class="legend-item"><span class="legend-dot" style="background:#8FA876"></span>Target: ${target} kg</div></div>` : ''}
         <div class="chart-stats">
           <div class="chart-stat"><div class="v">${latest}</div><div class="l">Latest</div></div>
           <div class="chart-stat"><div class="v" style="color:${diff<=0?'#8FA876':'#C4622D'}">${diff>0?'+':''}${diff}</div><div class="l">Change</div></div>
           <div class="chart-stat"><div class="v">${min}–${max}</div><div class="l">Range</div></div>
+          ${toGoalStat}
         </div>
       </div>
       <div class="section-title">Recent Log</div>
@@ -1137,7 +1276,10 @@ function renderProgress(){
         <div class="weight-entry">
           <span class="d">${fmtDate(entry.date)}</span>
           <span class="v">${entry.value} kg</span>
-          <button class="del-btn" onclick="deleteWeight('${entry.date}')">✕</button>
+          <div style="display:flex; gap:4px;">
+            <button class="del-btn" onclick="editWeight('${entry.date}')" title="Edit">✎</button>
+            <button class="del-btn" onclick="deleteWeight('${entry.date}')" title="Delete">✕</button>
+          </div>
         </div>
       `;
     });
