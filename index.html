@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Habits & Training Log</title>
+<title>The Ledger — Training Log</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -286,6 +286,7 @@
 
 <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="handleImportFile(event)">
 <div id="authScreen" style="display:none;"></div>
+<div id="verifyScreen" style="display:none;"></div>
 <div class="app" id="app" style="display:none;">
   <div class="loading" id="loading">Opening the ledger…</div>
 </div>
@@ -300,8 +301,11 @@ let editingWorkoutId = null;
 let currentUser = null;
 let authMode = 'signin';
 let authError = '';
+let authInfo = '';
 let authBusy = false;
 let authEmailDraft = '';
+let verifyBusy = false;
+let verifyMessage = '';
 let audioCtx = null;
 
 function localDateStr(d){
@@ -354,7 +358,7 @@ function friendlyAuthError(code){
   return map[code] || 'Something went wrong. Please try again.';
 }
 
-function setAuthMode(m){ authMode = m; authError = ''; renderAuthScreen(); }
+function setAuthMode(m){ authMode = m; authError = ''; authInfo = ''; renderAuthScreen(); }
 
 async function doSignIn(){
   const email = document.getElementById('authEmail').value.trim();
@@ -377,7 +381,8 @@ async function doSignUp(){
   if(password.length < 6){ authError = 'Password should be at least 6 characters.'; renderAuthScreen(); return; }
   authBusy = true; authError = ''; renderAuthScreen();
   try{
-    await auth.createUserWithEmailAndPassword(email, password);
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    try{ await cred.user.sendEmailVerification(); }catch(e){ /* account is still created even if this fails */ }
   }catch(e){
     authBusy = false; authError = friendlyAuthError(e.code); renderAuthScreen();
   }
@@ -385,6 +390,76 @@ async function doSignUp(){
 
 function doLogout(){
   auth.signOut();
+}
+
+async function resendVerification(){
+  if(!currentUser) return;
+  verifyBusy = true; verifyMessage = ''; renderVerifyScreen();
+  try{
+    await currentUser.sendEmailVerification();
+    verifyMessage = 'Verification email sent — check your inbox (and spam folder).';
+  }catch(e){
+    verifyMessage = 'Could not send the email right now. Please wait a moment and try again.';
+  }
+  verifyBusy = false; renderVerifyScreen();
+}
+
+async function checkVerification(){
+  if(!currentUser) return;
+  verifyBusy = true; verifyMessage = ''; renderVerifyScreen();
+  try{
+    await currentUser.reload();
+    if(auth.currentUser.emailVerified){
+      currentUser = auth.currentUser;
+      document.getElementById('verifyScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      await loadData();
+      return;
+    } else {
+      verifyMessage = "Still not verified — open the email and tap the link, then try again.";
+    }
+  }catch(e){
+    verifyMessage = 'Something went wrong checking your status. Please try again.';
+  }
+  verifyBusy = false; renderVerifyScreen();
+}
+
+function renderVerifyScreen(){
+  document.getElementById('verifyScreen').innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-eyebrow">The Ledger</div>
+      <div class="auth-title">Verify <span>Email</span></div>
+      <p style="text-align:center; color:var(--muted); font-size:13px; line-height:1.6; margin-bottom:20px;">
+        We sent a verification link to<br><strong style="color:var(--bone)">${escapeHtml(currentUser ? currentUser.email : '')}</strong>.<br>
+        Tap the link in that email, then come back here.
+      </p>
+      ${verifyMessage ? `<div class="auth-error" style="background:rgba(143,168,118,0.15); border-color:var(--moss); color:#B7CBA6;">${escapeHtml(verifyMessage)}</div>` : ''}
+      <button class="btn" ${verifyBusy?'disabled':''} onclick="checkVerification()">I've Verified — Continue</button>
+      <button class="btn ghost" style="margin-top:10px;" ${verifyBusy?'disabled':''} onclick="resendVerification()">Resend Email</button>
+      <button class="backup-link" style="margin-top:18px; width:100%; text-align:center;" onclick="doLogout()">Log Out</button>
+      ${verifyBusy ? `<div class="auth-loading">Please wait…</div>` : ''}
+    </div>
+  `;
+}
+
+async function doForgotPassword(){
+  const emailInput = document.getElementById('authEmail');
+  const email = emailInput ? emailInput.value.trim() : '';
+  authEmailDraft = email;
+  if(!email){
+    authError = 'Enter your email above first, then tap "Forgot password?".';
+    authInfo = '';
+    renderAuthScreen();
+    return;
+  }
+  authBusy = true; authError = ''; authInfo = ''; renderAuthScreen();
+  try{
+    await auth.sendPasswordResetEmail(email);
+    authInfo = 'Password reset email sent — check your inbox (and spam folder).';
+  }catch(e){
+    authError = friendlyAuthError(e.code);
+  }
+  authBusy = false; renderAuthScreen();
 }
 
 function renderAuthScreen(){
@@ -397,6 +472,7 @@ function renderAuthScreen(){
         <button class="auth-mode-btn ${authMode==='signup'?'active':''}" onclick="setAuthMode('signup')">Create Account</button>
       </div>
       ${authError ? `<div class="auth-error">${escapeHtml(authError)}</div>` : ''}
+      ${authInfo ? `<div class="auth-error" style="background:rgba(143,168,118,0.15); border-color:var(--moss); color:#B7CBA6;">${escapeHtml(authInfo)}</div>` : ''}
       <div class="field">
         <label>Email</label>
         <input type="email" id="authEmail" placeholder="you@example.com" value="${escapeAttr(authEmailDraft)}" autocomplete="email">
@@ -408,6 +484,7 @@ function renderAuthScreen(){
       <button class="btn" ${authBusy?'disabled':''} onclick="${authMode==='signin'?'doSignIn()':'doSignUp()'}">
         ${authMode==='signin' ? 'Sign In' : 'Create Account'}
       </button>
+      ${authMode==='signin' ? `<button class="backup-link" style="margin-top:14px; width:100%; text-align:center;" ${authBusy?'disabled':''} onclick="doForgotPassword()">Forgot password?</button>` : ''}
       ${authBusy ? `<div class="auth-loading">Please wait…</div>` : ''}
     </div>
   `;
@@ -418,11 +495,20 @@ auth.onAuthStateChanged(async (user) => {
     currentUser = user;
     authBusy = false;
     document.getElementById('authScreen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    await loadData();
+    if(!user.emailVerified){
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('verifyScreen').style.display = 'flex';
+      verifyMessage = '';
+      renderVerifyScreen();
+    } else {
+      document.getElementById('verifyScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      await loadData();
+    }
   } else {
     currentUser = null;
     document.getElementById('app').style.display = 'none';
+    document.getElementById('verifyScreen').style.display = 'none';
     document.getElementById('authScreen').style.display = 'flex';
     renderAuthScreen();
   }
