@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>The Habits & Training Log</title>
+<title>The Ledger — Training Log</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -259,6 +259,29 @@
   .food-day-header{ display:flex; justify-content:space-between; padding:8px 4px; font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ember); border-bottom:1px solid var(--divider); margin-bottom:2px; }
   .food-day-total{ color:var(--bone); font-weight:600; }
 
+  /* Themed confirmation modal */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:2000;
+    display:none; align-items:center; justify-content:center; padding:24px;
+    animation:fadeInOverlay .15s ease;
+  }
+  .modal-overlay.show{ display:flex; }
+  @keyframes fadeInOverlay{ from{opacity:0;} to{opacity:1;} }
+  .modal-card{
+    background:var(--surface-raised); border:1px solid var(--divider); border-radius:4px;
+    padding:24px; max-width:360px; width:100%; box-shadow:0 16px 48px rgba(0,0,0,0.55);
+    animation:modalPop .18s ease;
+  }
+  @keyframes modalPop{ from{opacity:0; transform:translateY(8px) scale(0.98);} to{opacity:1; transform:translateY(0) scale(1);} }
+  .modal-title{
+    font-family:'Oswald',sans-serif; font-weight:600; font-size:17px; color:var(--bone);
+    text-transform:uppercase; letter-spacing:0.02em; margin-bottom:10px;
+  }
+  .modal-message{ font-size:13px; color:var(--muted); line-height:1.55; margin-bottom:22px; }
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-actions .btn{ margin-top:0; flex:1; }
+  .btn.danger{ background:var(--danger); color:var(--ink); }
+
   /* Milestone badges & toast */
   .milestone-badge{ display:inline-flex; align-items:center; gap:3px; background:rgba(196,98,45,0.15); color:var(--ember); font-size:9px; padding:2px 7px; border-radius:10px; margin-left:8px; text-transform:uppercase; letter-spacing:0.04em; font-family:'IBM Plex Mono',monospace; white-space:nowrap; }
   .milestone-toast{
@@ -302,6 +325,16 @@
 <input type="file" id="importFileInput" accept="application/json" style="display:none" onchange="handleImportFile(event)">
 <div id="authScreen" style="display:none;"></div>
 <div id="verifyScreen" style="display:none;"></div>
+<div id="confirmModal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-title" id="confirmModalTitle">Delete this?</div>
+    <div class="modal-message" id="confirmModalMessage"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn danger" id="confirmModalConfirmBtn" onclick="confirmModalProceed()">Delete</button>
+    </div>
+  </div>
+</div>
 <div class="app" id="app" style="display:none;">
   <div class="loading" id="loading">Opening the ledger…</div>
 </div>
@@ -553,21 +586,27 @@ function handleImportFile(evt){
   reader.onload = () => {
     try{
       const imported = JSON.parse(reader.result);
-      if(!confirm('Restore this backup? It will replace all current data on this device.')) return;
-      data = {
-        habits: imported.habits || [],
-        checkins: imported.checkins || {},
-        workouts: imported.workouts || [],
-        weights: imported.weights || [],
-        calories: imported.calories || {},
-        calorieGoal: imported.calorieGoal || null,
-        bmrProfile: imported.bmrProfile || null,
-        templates: imported.templates || [],
-        foodPresets: imported.foodPresets || [],
-        foodLog: imported.foodLog || []
-      };
-      saveData(); render();
-      alert('Backup restored.');
+      showConfirmModal(
+        'Restore this backup?',
+        'It will replace all current data on this device.',
+        () => {
+          data = {
+            habits: imported.habits || [],
+            checkins: imported.checkins || {},
+            workouts: imported.workouts || [],
+            weights: imported.weights || [],
+            calories: imported.calories || {},
+            calorieGoal: imported.calorieGoal || null,
+            bmrProfile: imported.bmrProfile || null,
+            templates: imported.templates || [],
+            foodPresets: imported.foodPresets || [],
+            foodLog: imported.foodLog || []
+          };
+          saveData(); render();
+          alert('Backup restored.');
+        },
+        'Restore'
+      );
     }catch(e){
       alert('That file could not be read as a backup.');
     }
@@ -695,10 +734,15 @@ function editHabitName(id){
 }
 function deleteHabit(id){
   const h = data.habits.find(x=>x.id===id);
-  if(!confirm(`Delete "${h ? h.name : 'this habit'}"? This also removes its entire streak history. This can't be undone.`)) return;
-  data.habits = data.habits.filter(h=>h.id!==id);
-  Object.keys(data.checkins).forEach(d=>{ data.checkins[d] = (data.checkins[d]||[]).filter(x=>x!==id); });
-  saveData(); render();
+  showConfirmModal(
+    `Delete "${h ? h.name : 'this habit'}"?`,
+    "This also removes its entire streak history. This can't be undone.",
+    () => {
+      data.habits = data.habits.filter(h=>h.id!==id);
+      Object.keys(data.checkins).forEach(d=>{ data.checkins[d] = (data.checkins[d]||[]).filter(x=>x!==id); });
+      saveData(); render();
+    }
+  );
 }
 
 function computePersonalBests(){
@@ -805,10 +849,15 @@ function cancelEditWorkout(){
 }
 function deleteWorkout(id){
   const w = data.workouts.find(x=>x.id===id);
-  if(!confirm(`Delete "${w ? w.title : 'this session'}"${w ? ' ('+fmtDate(w.date)+')' : ''}? This can't be undone.`)) return;
-  data.workouts = data.workouts.filter(w=>w.id!==id);
-  if(editingWorkoutId===id){ editingWorkoutId = null; draftExercises = [{name:'',sets:'',reps:'',weight:''}]; }
-  saveData(); render();
+  showConfirmModal(
+    `Delete "${w ? w.title : 'this session'}"?`,
+    w ? `Logged on ${fmtDate(w.date)}. This can't be undone.` : "This can't be undone.",
+    () => {
+      data.workouts = data.workouts.filter(w=>w.id!==id);
+      if(editingWorkoutId===id){ editingWorkoutId = null; draftExercises = [{name:'',sets:'',reps:'',weight:''}]; }
+      saveData(); render();
+    }
+  );
 }
 
 function saveAsTemplate(){
@@ -829,9 +878,15 @@ function loadTemplate(id){
   renderExerciseRows();
 }
 function deleteTemplate(id){
-  if(!confirm('Delete this template? This does not affect any sessions already logged.')) return;
-  data.templates = (data.templates||[]).filter(t=>t.id!==id);
-  saveData(); render();
+  const t = (data.templates||[]).find(x=>x.id===id);
+  showConfirmModal(
+    `Delete "${t ? t.name : 'this template'}"?`,
+    'This does not affect any sessions already logged.',
+    () => {
+      data.templates = (data.templates||[]).filter(t=>t.id!==id);
+      saveData(); render();
+    }
+  );
 }
 
 function addWeight(val, date){
@@ -853,9 +908,14 @@ function editWeight(date){
   if(valInput){ valInput.scrollIntoView({behavior:'smooth', block:'center'}); valInput.focus(); }
 }
 function deleteWeight(date){
-  if(!confirm(`Delete the weight entry for ${fmtDate(date)}? This can't be undone.`)) return;
-  data.weights = data.weights.filter(w=>w.date!==date);
-  saveData(); render();
+  showConfirmModal(
+    `Delete weight entry?`,
+    `${fmtDate(date)}. This can't be undone.`,
+    () => {
+      data.weights = data.weights.filter(w=>w.date!==date);
+      saveData(); render();
+    }
+  );
 }
 
 function caloriesInForDate(date){
@@ -910,10 +970,15 @@ function cancelEditFoodLog(){
 }
 function deleteFoodLogEntry(id){
   const f = data.foodLog.find(x=>x.id===id);
-  if(!confirm(`Delete "${f ? f.name : 'this entry'}"? This can't be undone.`)) return;
-  data.foodLog = data.foodLog.filter(f=>f.id!==id);
-  if(editingFoodLogId===id) editingFoodLogId = null;
-  saveData(); render();
+  showConfirmModal(
+    `Delete "${f ? f.name : 'this entry'}"?`,
+    "This can't be undone.",
+    () => {
+      data.foodLog = data.foodLog.filter(f=>f.id!==id);
+      if(editingFoodLogId===id) editingFoodLogId = null;
+      saveData(); render();
+    }
+  );
 }
 
 function setCaloriesOut(date, outVal){
@@ -939,9 +1004,15 @@ function editCaloriesOut(date){
   if(dateInput){ dateInput.scrollIntoView({behavior:'smooth', block:'center'}); }
 }
 function deleteCaloriesOut(date){
-  if(!confirm(`Clear the calories burned entry for ${fmtDate(date)}?`)) return;
-  if(data.calories[date]) data.calories[date].out = 0;
-  saveData(); render();
+  showConfirmModal(
+    `Clear calories burned?`,
+    `${fmtDate(date)}.`,
+    () => {
+      if(data.calories[date]) data.calories[date].out = 0;
+      saveData(); render();
+    },
+    'Clear'
+  );
 }
 
 function addFoodPreset(){
@@ -956,9 +1027,15 @@ function addFoodPreset(){
 }
 function deleteFoodPreset(id){
   const p = (data.foodPresets||[]).find(x=>x.id===id);
-  if(!confirm(`Remove "${p ? p.name : 'this'}" from Quick Add?`)) return;
-  data.foodPresets = (data.foodPresets||[]).filter(p=>p.id!==id);
-  saveData(); render();
+  showConfirmModal(
+    `Remove "${p ? p.name : 'this'}" from Quick Add?`,
+    '',
+    () => {
+      data.foodPresets = (data.foodPresets||[]).filter(p=>p.id!==id);
+      saveData(); render();
+    },
+    'Remove'
+  );
 }
 function quickAddFood(id){
   const preset = (data.foodPresets||[]).find(p=>p.id===id);
@@ -1840,6 +1917,30 @@ function handleAddWeight(){
 
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+let confirmModalCallback = null;
+
+function showConfirmModal(title, message, onConfirm, confirmLabel){
+  confirmModalCallback = onConfirm;
+  const titleEl = document.getElementById('confirmModalTitle');
+  const msgEl = document.getElementById('confirmModalMessage');
+  const btnEl = document.getElementById('confirmModalConfirmBtn');
+  const overlay = document.getElementById('confirmModal');
+  if(titleEl) titleEl.textContent = title;
+  if(msgEl) msgEl.textContent = message || '';
+  if(btnEl) btnEl.textContent = confirmLabel || 'Delete';
+  if(overlay) overlay.classList.add('show');
+}
+function closeConfirmModal(){
+  const overlay = document.getElementById('confirmModal');
+  if(overlay) overlay.classList.remove('show');
+  confirmModalCallback = null;
+}
+function confirmModalProceed(){
+  const cb = confirmModalCallback;
+  closeConfirmModal();
+  if(cb) cb();
+}
 
 function render(){
   const now = new Date();
